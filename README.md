@@ -53,6 +53,7 @@ A tiny HTTP API, and one feature built spec-first: per-client rate limiting.
 | [`constraints.md`](./constraints.md) | Never-touch paths and the conventions to honour. |
 | [`AGENTS.md`](./AGENTS.md) | What the agent reads first. `CLAUDE.md` points here. |
 | [`scripts/gate.mjs`](./scripts/gate.mjs) | The gate, in ~270 dependency-free lines. Read it, distrust it, change it. |
+| [`spec-kit.md`](./spec-kit.md) | The same repo, built with [github/spec-kit](https://github.com/github/spec-kit): the prompts, the mapping, and what each side is missing. |
 | [`.github/workflows/gate.yml`](./.github/workflows/gate.yml) | The same gate, blocking merge. |
 | `src/`, `tests/` | The service, and the regression suite that predates the feature. |
 
