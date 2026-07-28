@@ -68,10 +68,10 @@ Ad-hoc prompting supplies the first quarter of this and leaves the rest to luck.
 
 | | | Where it lives |
 | - | - | - |
-| 1 | **Interface and types** — the contract, written before any implementation | `SPEC.md` §2 |
-| 2 | **Acceptance criteria** — executable, failing before the change | `acceptance.test.ts` |
-| 3 | **Constraints** — what it must not touch or do | `SPEC.md` §5 + `constraints.md` |
-| 4 | **Conventions** — what this codebase expects, which nothing can infer | `constraints.md` |
+| 1 | **Interface and types**: the contract, written before any implementation | `SPEC.md` §2 |
+| 2 | **Acceptance criteria**: executable, failing before the change | `acceptance.test.ts` |
+| 3 | **Constraints**: what it must not touch or do | `SPEC.md` §5 + `constraints.md` |
+| 4 | **Conventions**: what this codebase expects, which nothing can infer | `constraints.md` |
 
 The single highest-value line in the whole repo is the one that is *missing*
 from the allowed paths in `SPEC.md` §5: `tests/**`. The agent cannot edit the

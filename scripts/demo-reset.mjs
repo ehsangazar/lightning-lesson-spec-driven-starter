@@ -35,8 +35,8 @@ The regression suite in tests/ still passes. The acceptance suite in
 spec/001-rate-limit/ does not, because the thing it describes does not exist.
 That red is the spec.
 
-${bold('Run 1 — ad-hoc')}   ask the agent: "add rate limiting to the API"
-${bold('Run 2 — spec-first')} ask the agent: "implement spec/001-rate-limit/SPEC.md"
+${bold('Run 1 · ad-hoc')}   ask the agent: "add rate limiting to the API"
+${bold('Run 2 · spec-first')} ask the agent: "implement spec/001-rate-limit/SPEC.md"
 
 Then, either way:  npm run gate
 

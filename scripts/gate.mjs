@@ -123,7 +123,8 @@ function activeSpec(changed) {
   const touched = new Set()
   for (const file of changed ?? []) {
     const match = /^spec\/([^/]+)\//.exec(file)
-    if (match && match[1] !== 'TEMPLATE.md') touched.add(match[1])
+    // Directories starting with _ are scaffolding (spec/_template), not specs.
+    if (match && !match[1].startsWith('_')) touched.add(match[1])
   }
 
   if (touched.size === 1) return [...touched][0]
@@ -231,7 +232,7 @@ function checkPaths() {
     }
     // A change that went out of bounds is not worth compiling. Stop here so the
     // real finding is the last thing on screen, not buried above a test run.
-    console.log(`\n${c.red('GATE FAILED')} — the diff went outside its allowed paths.`)
+    console.log(`\n${c.red('GATE FAILED')}: the diff went outside its allowed paths.`)
     console.log(c.dim('Fix the change, or fix the spec. Do not fix the gate.'))
     process.exit(1)
   }
@@ -265,8 +266,8 @@ for (const { name, ok } of results) {
 }
 
 if (failed) {
-  console.log(`\n${c.red('GATE FAILED')} — this change is not mergeable yet.`)
+  console.log(`\n${c.red('GATE FAILED')}: this change is not mergeable yet.`)
   process.exit(1)
 }
-console.log(`\n${c.green('GATE PASSED')} — the machine-checkable half is done.`)
+console.log(`\n${c.green('GATE PASSED')}: the machine-checkable half is done.`)
 console.log(c.dim('Now the human half: the review checklist at the end of the spec.'))

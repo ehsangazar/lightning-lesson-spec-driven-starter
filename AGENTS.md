@@ -7,8 +7,8 @@ Do not start writing code until you have read all three.
 
 Every change is defined by a spec in `spec/<id>/`:
 
-- `SPEC.md` — intent, interface, behaviour, acceptance criteria, allowed paths
-- `acceptance.test.ts` — the same criteria, executable
+- `SPEC.md`: intent, interface, behaviour, acceptance criteria, allowed paths
+- `acceptance.test.ts`: the same criteria, executable
 
 The spec is the requirement. The prompt that brought you here is not. If they
 disagree, the spec wins and you should say so rather than quietly picking one.

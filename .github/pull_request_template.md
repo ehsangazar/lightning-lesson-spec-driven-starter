@@ -8,7 +8,7 @@ Implements: `spec/___/SPEC.md`
 
 `npm run gate` covers these. Do not tick them by hand; paste the result.
 
-- [ ] Path guard green — the diff touches only paths in the spec's `allow` fence
+- [ ] Path guard green: the diff touches only paths in the spec's `allow` fence
 - [ ] Typecheck green
 - [ ] Full test suite green, including the regression suite in `tests/`
 

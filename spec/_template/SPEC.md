@@ -16,7 +16,7 @@ One paragraph. What changes for the user, and why now. No implementation.
 
 TODO
 
-**Not doing** — the fence that stops scope creep. An agent will happily "improve"
+**Not doing**, the fence that stops scope creep. An agent will happily "improve"
 things you never asked about; the only defence is naming them.
 
 - TODO
@@ -41,8 +41,8 @@ export function TODO(options: TODO): TODO
 
 ### Design constraints on the interface
 
-- TODO — e.g. takes `now: number` rather than reading the clock, so it is testable.
-- TODO — e.g. knows nothing about HTTP.
+- TODO, e.g. takes `now: number` rather than reading the clock, so it is testable.
+- TODO, e.g. knows nothing about HTTP.
 
 ---
 
