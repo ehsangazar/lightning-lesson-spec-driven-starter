@@ -8,6 +8,26 @@
 
 **Input**: User description: "Add per-client rate limiting so one noisy caller degrades only itself. Ten requests per sixty seconds per key. The key is the `X-Client-Id` header when present, otherwise the remote IP; distinct keys never affect each other. The window is sliding, not a fixed calendar bucket: each hit stops counting exactly 60000 ms after it happened, and each expires independently. At t = 59999 ms a blocked caller is still blocked; at t = 60001 ms exactly one slot has freed, not all ten. Over the limit responds 429 with `{ "error": "rate_limited" }` and a `Retry-After` header in whole seconds, never below 1. Every non-exempt response, allowed or rejected, carries `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`, where Reset is unix SECONDS, not milliseconds. Remaining counts down 9, 8, 7 and pins at 0 when blocked. Rejected requests do not consume a slot: being blocked must not extend the block. `/health` is never limited at any volume and carries no rate-limit headers. Keys whose hits have all expired are dropped, and the tracked key count is observable so the memory bound can be asserted. The limiter takes the current time as an argument and never reads the clock itself. It knows nothing about HTTP: it takes a string key, not a request. Not doing: distributed or cross-process limiting, per-endpoint or per-plan limits, configuration or env vars, persistence."
 
+## Clarifications
+
+### Session 2026-07-30
+
+- Q: Can a caller get itself an unlimited allowance simply by sending a different `X-Client-Id`
+  value on every request, or must its network address still cap it? → A: Trust the header. A
+  rotating identifier does grant a fresh allowance; this is an accepted assumption, on the basis
+  that the service sits behind a trusted caller boundary.
+- Q: When no client identifier header is present, is the "network address" the direct socket
+  address of whoever connected, or should a forwarding header such as `X-Forwarded-For` be
+  consulted first? → A: The direct socket address only. Forwarding headers are never consulted.
+- Q: When are expired keys actually removed from memory, only when something asks for the tracked
+  key count, or does an ordinary request also clean up? → A: A request expires its own key's hits,
+  and additionally triggers a full sweep at most once per window, so reclamation never depends on
+  anything observing it.
+- Q: When a test reads the tracked key count, should that read itself clean up expired keys first,
+  or report exactly what is being held right now? → A: Report what is held right now. The read is a
+  passive observation, takes no time argument, and sweeps nothing, so a leak stays visible to a
+  test.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - A noisy caller degrades only itself (Priority: P1)
@@ -124,17 +144,22 @@ over a long run does not accumulate a record for every one of them forever.
 **Why this priority**: A correctness property with no visible symptom until it matters. Separated
 so it can be asserted directly rather than inferred.
 
-**Independent Test**: Track several keys, advance time past the window, and read the tracked key
-count. It has dropped.
+**Independent Test**: Track several keys, advance time past the window, make one further request
+to drive the sweep, and read the tracked key count. It has dropped.
 
 **Acceptance Scenarios**:
 
 1. **Given** several keys that have each made requests, **When** time advances past the window for
-   all of them, **Then** the tracked key count falls to zero.
-2. **Given** one active key and several that have gone quiet, **When** time advances, **Then** only
-   the active key remains tracked.
+   all of them and one further request arrives, **Then** the tracked key count falls to one: the
+   key of that request, and nothing else.
+2. **Given** one active key and several that have gone quiet, **When** time advances and the active
+   key makes a further request, **Then** only the active key remains tracked.
 3. **Given** any moment, **When** the tracked key count is read, **Then** it is observable without
    reaching into internal state, so the memory bound can be asserted by a test.
+4. **Given** a long run of requests under continually changing keys, **When** the tracked key count
+   is read at the end without anything having read it during the run, **Then** it reflects only the
+   most recent window's keys, because the sweep runs during ordinary request handling rather than
+   at the moment of observation.
 
 ---
 
@@ -159,6 +184,12 @@ count. It has dropped.
   against the allowance, because rate limiting runs before routing and the cost was already paid.
 - **Two requests at the identical timestamp**: both counted. Nothing collapses hits that share a
   moment.
+- **A key that is never seen again**: reclaimed by the periodic full sweep, not left in place
+  waiting for a caller that never returns. The sweep is driven by the time supplied to ordinary
+  request handling, so it happens in a live process with nothing observing it, and it still runs
+  without waiting in a test.
+- **Sweeping when no time has passed**: a full sweep runs at most once per window, so a burst of
+  requests within one window triggers one sweep between them, not one per request.
 
 ## Requirements *(mandatory)*
 
@@ -166,7 +197,10 @@ count. It has dropped.
 
 - **FR-001**: The service MUST allow at most ten requests per key within any sixty-second window.
 - **FR-002**: The service MUST derive the key from the client identifier header when it is present
-  and non-empty, and from the caller's network address otherwise.
+  and non-empty, and from the caller's network address otherwise. The header MUST be taken at face
+  value: the service MUST NOT additionally cap a caller by network address when a header is
+  present. The network address MUST be the direct socket address of the connecting peer.
+  Forwarding headers such as `X-Forwarded-For` MUST NOT be consulted.
 - **FR-003**: Allowances MUST be independent per key. Activity on one key MUST NOT affect another.
 - **FR-004**: The window MUST slide. Each recorded request MUST stop counting exactly 60000 ms
   after the moment it was made, and each MUST expire independently of the others.
@@ -187,9 +221,15 @@ count. It has dropped.
 - **FR-012**: The health route MUST never be refused, at any volume, and MUST NOT consume
   allowance.
 - **FR-013**: Responses on the health route MUST carry no rate-limit reporting of any kind.
-- **FR-014**: Keys whose recorded requests have all expired MUST stop being tracked.
+- **FR-014**: Keys whose recorded requests have all expired MUST stop being tracked. Reclamation
+  MUST NOT depend on anything outside the limiter choosing to observe it: handling a request MUST
+  expire that key's own hits, and MUST additionally sweep every tracked key at most once per
+  window, so a process that only ever handles requests still stays bounded.
 - **FR-015**: The number of currently tracked keys MUST be observable through the public interface,
-  so a memory bound can be asserted by a test.
+  so a memory bound can be asserted by a test. That count MUST be a passive observation: it MUST
+  NOT take the current time, and MUST NOT expire or sweep anything. It reports what is held at the
+  moment it is asked, so a failure of FR-014 is visible rather than tidied away by the act of
+  looking.
 - **FR-016**: The limiting component MUST take the current time as an argument and MUST NOT read
   the clock itself.
 - **FR-017**: The limiting component MUST take a key as text and MUST know nothing about HTTP,
@@ -219,8 +259,12 @@ count. It has dropped.
 - **SC-005**: 100% of non-exempt responses report the allowance, and 0% of health responses do.
 - **SC-006**: A caller that is refused repeatedly recovers at exactly the same moment as one that
   stopped trying, so refusals cost nothing.
-- **SC-007**: After every tracked caller has been idle for the window, the tracked key count is
-  zero, and this is verifiable from outside the component.
+- **SC-007**: After every tracked caller has been idle for the window, the next request leaves its
+  own key tracked and nothing else, and this is verifiable from outside the component.
+- **SC-009**: A process that serves a long run of requests under continually changing keys, and
+  never once reads the tracked key count, still holds a number of keys bounded by the traffic of a
+  single window, not by the traffic of the whole run. Because reading the count changes nothing,
+  this is a genuine measurement rather than an artefact of looking.
 - **SC-008**: Every behaviour above is verifiable without waiting in real time, so the full
   acceptance suite runs in milliseconds.
 
@@ -238,8 +282,21 @@ count. It has dropped.
 - **Time is supplied to the limiter as milliseconds since the epoch**, matching the `now: number`
   convention the project already uses. Reported reset values are converted to seconds by rounding
   up, so a reset never reads as already past.
+- **Network address means the socket address**: the address of the peer that opened the
+  connection, never a forwarding header. Behind a shared proxy that means every header-less caller
+  collapses onto one allowance. That is a deployment consequence, recorded here so it is not
+  mistaken for a defect, and the supported way for such a caller to be counted separately is to
+  send the client identifier header. `X-Forwarded-For` is exactly as forgeable as that header, so
+  trusting it would add a second unverified input without adding a second guarantee.
 - **Network address is available**: when it cannot be determined, a single shared fallback key is
   used. Callers behind that fallback share an allowance, which is the safe direction to fail.
+- **The client identifier header is trusted**: it is caller-supplied and unverified, so a caller
+  that sends a fresh `X-Client-Id` on every request receives a fresh allowance every time. This is
+  accepted, not an oversight. The service is assumed to sit behind a trusted caller boundary,
+  consistent with the single-process, no-configuration, no-allow-list scope of this feature.
+  Treating the header as a hint rather than a credential is what keeps key derivation to one line;
+  capping by address as well would mean two counters per request and no single answer to what the
+  reported headers describe.
 
 ## Out of Scope
 
